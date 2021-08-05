@@ -154,10 +154,10 @@ $scopes = "Group.ReadWrite.All", "Directory.ReadWrite.All", "Directory.AccessAsU
 # Function to Genereate Azure Authorization code
 Function Get-AzureAuthCode {
     param(
-        [parameter(Mandatory=$true)]$AADtenantID,
-        [parameter(Mandatory=$true)]$AADAppId,
-        [parameter(Mandatory=$true)]$RedirectUri,
-        [parameter(Mandatory=$true)]$scopes
+        [parameter(Mandatory = $true)]$AADtenantID,
+        [parameter(Mandatory = $true)]$AADAppId,
+        [parameter(Mandatory = $true)]$RedirectUri,
+        [parameter(Mandatory = $true)]$scopes
     )
     Add-Type -AssemblyName System.Windows.Forms
 
@@ -176,22 +176,22 @@ Function Get-AzureAuthCode {
     $scopesEncoded = $scopes -join "%20"
     $authorizationCodeUri = $authorizationCodeUri + "&scope=$scopesEncoded"
 
-    $form = New-Object -TypeName System.Windows.Forms.Form -Property @{Width=440;Height=640}
-    $web  = New-Object -TypeName System.Windows.Forms.WebBrowser -Property @{ Width=420;Height=600;Url=$authorizationCodeUri }
+    $form = New-Object -TypeName System.Windows.Forms.Form -Property @{Width = 440; Height = 640 }
+    $web = New-Object -TypeName System.Windows.Forms.WebBrowser -Property @{ Width = 420; Height = 600; Url = $authorizationCodeUri }
 
-    $DocComp  = {
+    $DocComp = {
         $Global:uri = $web.Url.AbsoluteUri        
-        if ($Global:uri -match "error=[^&]*|code=[^&]*") {$form.Close() }
+        if ($Global:uri -match "error=[^&]*|code=[^&]*") { $form.Close() }
     }
     $web.ScriptErrorsSuppressed = $true
     $web.Add_DocumentCompleted($DocComp)
     $form.Controls.Add($web)
-    $form.Add_Shown({$form.Activate()})
+    $form.Add_Shown( { $form.Activate() })
     $form.ShowDialog() | Out-Null
 
     $queryOutput = [System.Web.HttpUtility]::ParseQueryString($web.Url.Query)
     $output = @{}
-    foreach($key in $queryOutput.Keys){
+    foreach ($key in $queryOutput.Keys) {
         $output["$key"] = $queryOutput[$key]
     }
 
@@ -203,10 +203,10 @@ Function Get-AzureAuthCode {
 # Function to Genereate Azure Refresh token from Authorization code
 Function Get-AzureRefreshToken {
     param(
-        [parameter(Mandatory=$true)]$AADtenantID,
-        [parameter(Mandatory=$true)]$AADAppId,
-        [parameter(Mandatory=$true)]$RedirectUri,
-        [parameter(Mandatory=$true)]$AuthorizationCode
+        [parameter(Mandatory = $true)]$AADtenantID,
+        [parameter(Mandatory = $true)]$AADAppId,
+        [parameter(Mandatory = $true)]$RedirectUri,
+        [parameter(Mandatory = $true)]$AuthorizationCode
     )
     $baseUri = "https://login.microsoftonline.com/"
     $authUri = $baseUri + "$AADTenantID/oauth2/token"
@@ -225,19 +225,21 @@ Function Get-AzureRefreshToken {
 }
 
 try {
-   Write-Verbose -Verbose"Generating Microsoft Graph API Authorization Code.."
+    Write-Verbose -Verbose"Generating Microsoft Graph API Authorization Code.."
 
     $authorizationCode = Get-AzureAuthCode -AADtenantID $AADtenantID -AADAppId $AADAppId -RedirectUri $redirectUri -scopes $scopes
-} catch {
+}
+catch {
     Write-Error "Could not create Authorization Code. Error: $_"
 }
 
 try {
-   Write-Verbose -Verbose"Generating Microsoft Graph API Refresh Token.."
+    Write-Verbose -Verbose"Generating Microsoft Graph API Refresh Token.."
 
     $refreshToken = Get-AzureRefreshToken -AADtenantID $AADtenantID -AADAppId $AADAppId -AuthorizationCode $authorizationCode -RedirectUri $redirectUri
     Write-Output $refreshToken
-} catch {
+}
+catch {
     Write-Error "Could not create Refresh Token. Error: $_"
 }
 ```
