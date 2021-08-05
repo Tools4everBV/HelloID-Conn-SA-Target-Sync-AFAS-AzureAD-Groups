@@ -111,12 +111,22 @@ function Get-ADSanitizeGroupName
     $newName = $newName -replace '\.\.','.';
     return $newName;
 }
+
+function Remove-StringLatinCharacters
+{
+    PARAM ([string]$String)
+    [Text.Encoding]::ASCII.GetString([Text.Encoding]::GetEncoding("Cyrillic").GetBytes($String))
+}
 #endregion Supporting Functions
 
 try{
     Hid-Write-Status -Event "Information" -Message "Processing T4E_HelloID_OrganizationalUnits.."
     $organizationalUnits = New-Object System.Collections.ArrayList
     Get-AFASConnectorData -Token $token -BaseUri $baseUri -Connector "T4E_HelloID_OrganizationalUnits" ([ref]$organizationalUnits)
+    
+    # Troubleshooting
+    $organizationalUnits = $organizationalUnits[0]
+    Hid-Write-Status -Event "Warning" -Message ("Found T4E_HelloID_OrganizationalUnits: " + @($organizationalUnits).Count)
 
     $departments = $organizationalUnits | Sort-Object ExternalId -Unique | Sort-Object ExternalId, DisplayName
     foreach($department in $departments){
@@ -135,7 +145,8 @@ try{
                 Authorization = "Bearer $accesstoken";
                 'Content-Type' = "application/json";
                 Accept = "application/json";
-            }  
+                charset = "utf-8";
+            }
                         
             
             # The names of security principal objects can contain all Unicode characters except the special LDAP characters defined in RFC 2253.
@@ -145,10 +156,12 @@ try{
             # https://www.ietf.org/rfc/rfc2253.txt
             $AzureADGroupName = ("$azureADGroupNamePrefix$($department.ExternalId)$azureADGroupNameSuffix")
             $AzureADGroupName = Get-ADSanitizeGroupName -Name $AzureADGroupName
+            # Remove Diactritics
+            $AzureADGroupName = Remove-StringLatinCharacters $AzureADGroupName
         
             $AzureADGroupDescription = "$azureADGroupDescriptionPrefix$($azureADGroupName)$azureADGroupDescriptionSuffix"
 
-            $AzureADGroupMailNickname   = $AzureADGroupName.Replace(" ","")
+            $AzureADGroupMailNickname = $AzureADGroupName.Replace(" ","")
 
             Switch($GroupType){
                 'Microsoft 365 group' {
@@ -194,12 +207,12 @@ try{
             
             if($AzureADGroup){
                 $event = "update"
-                if($debug -eq $true){ Hid-Write-Status -Event "Warning" -Message "AzureAD group [$($($group.displayName))] already exists" }
+                if($debug -eq $true){ Hid-Write-Status -Event "Warning" -Message "AzureAD group [$($group.displayName)] already exists" }
 
                 $baseUpdateUri = "https://graph.microsoft.com/"
                 $updateUri = $baseUpdateUri + "v1.0/groups/$($AzureADGroup.id)"
 
-                $body = $group | ConvertTo-Json -Depth 10    
+                $body = $group | ConvertTo-Json -Depth 10
                 $response = Invoke-RestMethod -Uri $updateUri -Method PATCH -Headers $authorization -Body $body -Verbose:$false
 
                 # To update the following Exchange-specific properties, you must specify them in their own PATCH request, without including the other properties listed in the table above: allowExternalSenders, autoSubscribeNewMembers, hideFromAddressLists, hideFromOutlookClients, isSubscribedByMail, unseenCount.
@@ -207,24 +220,22 @@ try{
                 $groupAllowExternalSenders = [PSCustomObject]@{
                     allowExternalSenders = $allowExternalSenders; 
                 }
-                $body = $groupAllowExternalSenders | ConvertTo-Json -Depth 10    
+                $body = $groupAllowExternalSenders | ConvertTo-Json -Depth 10
                 $response = Invoke-RestMethod -Uri $updateUri -Method PATCH -Headers $authorization -Body $body -Verbose:$false
 
                 $groupAutoSubscribeNewMembers = [PSCustomObject]@{
                     autoSubscribeNewMembers = $autoSubscribeNewMembers;
                 }
-                $body = $groupAutoSubscribeNewMembers | ConvertTo-Json -Depth 10    
+                $body = $groupAutoSubscribeNewMembers | ConvertTo-Json -Depth 10
                 $response = Invoke-RestMethod -Uri $updateUri -Method PATCH -Headers $authorization -Body $body -Verbose:$false
 
-
-                if($debug -eq $true){ Hid-Write-Status -Event "Success" -Message "AzureAD group [$($($group.displayName))] updated successfully" }
+                if($debug -eq $true){ Hid-Write-Status -Event "Success" -Message "AzureAD group [$($group.displayName)] updated successfully" }
             }else{
                 $event = "create"
                 $baseCreateUri = "https://graph.microsoft.com/"
                 $createUri = $baseCreateUri + "v1.0/groups"
 
-                $body = $group | ConvertTo-Json -Depth 10    
-                
+                $body = $group | ConvertTo-Json -Depth 10
                 $response = Invoke-RestMethod -Uri $createUri -Method POST -Headers $authorization -Body $body -Verbose:$false
                 $AzureADGroup = $response
 
@@ -236,25 +247,25 @@ try{
                 $groupAllowExternalSenders = [PSCustomObject]@{
                     allowExternalSenders = $allowExternalSenders; 
                 }
-                $body = $groupAllowExternalSenders | ConvertTo-Json -Depth 10    
+                $body = $groupAllowExternalSenders | ConvertTo-Json -Depth 10
                 $response = Invoke-RestMethod -Uri $updateUri -Method PATCH -Headers $authorization -Body $body -Verbose:$false
 
                 $groupAutoSubscribeNewMembers = [PSCustomObject]@{
                     autoSubscribeNewMembers = $autoSubscribeNewMembers;
                 }
-                $body = $groupAutoSubscribeNewMembers | ConvertTo-Json -Depth 10    
+                $body = $groupAutoSubscribeNewMembers | ConvertTo-Json -Depth 10
                 $response = Invoke-RestMethod -Uri $updateUri -Method PATCH -Headers $authorization -Body $body -Verbose:$false
 
-                if($debug -eq $true){ Hid-Write-Status -Event "Success" -Message "AzureAD group [$($($group.displayName))] created successfully" }
+                if($debug -eq $true){ Hid-Write-Status -Event "Success" -Message "AzureAD group [$($group.displayName)] created successfully" }
             }
         } catch {
             if($_.ErrorDetails.Message) { $errorDetailsMessage = ($_.ErrorDetails.Message | ConvertFrom-Json).error.message } 
-            HID-Write-Status -Event Error -Message ("Error when trying to $event AzureAD group [$($DisplayName)]. Error: $_" + $errorDetailsMessage)
+            HID-Write-Status -Event Error -Message ("Error when trying to $event AzureAD group [$($group.displayName)]. Error: $_" + $errorDetailsMessage)
             Hid-Write-Status -Event Error -Message "$($body | Out-String)"
-            HID-Write-Summary -Event Failed -Message "Error when trying to $event AzureAD group [$($DisplayName)]"
-        }            
+            HID-Write-Summary -Event Failed -Message "Error when trying to $event AzureAD group [$($group.displayName)]"
+        }          
     }
-    Hid-Write-Summary -Event "Success" -Message "Successfully synchronized $($departments.Count) AFAS Organizational Units to AD Groups"
+    Hid-Write-Summary -Event "Success" -Message "Successfully synchronized $(@($departments).Count) AFAS Organizational Units to Azure AD Groups"
 }catch{
     throw $_
 }
