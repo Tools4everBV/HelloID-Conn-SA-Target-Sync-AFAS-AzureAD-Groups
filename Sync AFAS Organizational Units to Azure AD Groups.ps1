@@ -121,7 +121,7 @@ function Remove-StringLatinCharacters
 
 try{
     Hid-Write-Status -Event "Information" -Message "Processing T4E_HelloID_OrganizationalUnits.."
-    $organizationalUnits = New-Object System.Collections.ArrayList
+    $organizationalUnits = [System.Collections.ArrayList]::new()
     Get-AFASConnectorData -Token $token -BaseUri $baseUri -Connector "T4E_HelloID_OrganizationalUnits" ([ref]$organizationalUnits)
     
     # Troubleshooting
